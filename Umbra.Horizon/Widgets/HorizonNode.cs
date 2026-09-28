@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
+using System.Reflection;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
@@ -39,15 +40,15 @@ internal sealed class HorizonNode : Node
     public uint  LineColor          { get; set; } = 0xFFACFFAA;
     public uint  TextColor          { get; set; } = 0xFFFFFFFF;
 
-    private readonly IPlayer          _player  = Framework.Service<IPlayer>();
-    private readonly IGameCamera      _camera  = Framework.Service<IGameCamera>();
-    private readonly IZoneManager     _zones   = Framework.Service<IZoneManager>();
-    private readonly IGameGui         _gui     = Framework.Service<IGameGui>();
-    private readonly ITextureProvider _tex     = Framework.Service<ITextureProvider>();
-    private readonly NaviMapReader    _navi    = Framework.Service<NaviMapReader>();
+    private readonly IPlayer           _player  = Framework.Service<IPlayer>();
+    private readonly IGameCamera       _camera  = Framework.Service<IGameCamera>();
+    private readonly IZoneManager      _zones   = Framework.Service<IZoneManager>();
+    private readonly IGameGui          _gui     = Framework.Service<IGameGui>();
+    private readonly ITextureProvider  _tex     = Framework.Service<ITextureProvider>();
+    private readonly NaviMapReader     _navi    = Framework.Service<NaviMapReader>();
     private readonly WorldMarkerBridge _markers = Framework.Service<WorldMarkerBridge>();
 
-    private HashSet<uint> _filtered = [];
+    private HashSet<uint> _filtered  = [];
     private string        _filterRaw = string.Empty;
 
     private static readonly Dictionary<int, string> Cardinals = new() {
@@ -74,28 +75,26 @@ internal sealed class HorizonNode : Node
     {
         if (VisibilityMode == 1 && _player.IsInCombat) return;
         if (VisibilityMode == 2 && !_player.IsInCombat) return;
-        if (HideOnGathering && AddonVisible("GatheringMasterpiece") | AddonVisible("Gathering")) return;
-        if (AddonVisible("_CharaMakeBgSelector")) return;
+        if (HideOnGathering && (AddonVisible("GatheringMasterpiece") || AddonVisible("Gathering"))) return;
 
         var rect = Bounds.ContentRect;
         if (rect.Width <= 1 || rect.Height <= 1) return;
 
-        float x = rect.TopLeft.X;
-        float y = rect.TopLeft.Y;
-        float w = rect.Width;
-        float h = rect.Height;
+        float x  = rect.TopLeft.X;
+        float y  = rect.TopLeft.Y;
+        float w  = rect.Width;
+        float h  = rect.Height;
         float cx = x + w * 0.5f;
         float cy = y + h * 0.5f;
 
         float heading = GetHeadingDegrees();
 
         drawList.PushClipRect(rect.TopLeft, rect.BottomRight, true);
-        drawList.AddRectFilled(rect.TopLeft, rect.BottomRight, 0x8C1C1C24, 6f);
-        drawList.AddRect(rect.TopLeft, rect.BottomRight, 0xB273737F, 6f);
 
         if (ShowCenterMarker)
         {
-            drawList.AddLine(new(cx, y + 2), new(cx, y + h - 2), CenterLineColor, 1.4f);
+            var a = EdgeFade(cx, x, w, 18f);
+            drawList.AddLine(new(cx, y + h * 0.55f), new(cx, y + h - 2), ApplyAlpha(CenterLineColor, a), 1.4f);
         }
 
         if (ShowTicks)
@@ -107,27 +106,44 @@ internal sealed class HorizonNode : Node
                 var alpha = EdgeFade(screenX, x, w);
                 if (alpha <= 0.01f) continue;
 
-                var isCardinal = Cardinals.ContainsKey(i);
-                var tickH = isCardinal ? h * 0.75f : (i % 30 == 0 ? h * 0.42f : h * 0.28f);
-                drawList.AddLine(
-                    new(screenX, cy - tickH * 0.5f),
-                    new(screenX, cy + tickH * 0.5f),
-                    ApplyAlpha(LineColor, alpha),
-                    isCardinal ? 1.4f : 1f
-                );
+                var labeled = Cardinals.ContainsKey(i) || InterCardinals.ContainsKey(i);
+                float tickTop;
+                float tickBot;
+                float thick;
+                if (labeled)
+                {
+                    tickTop = y + h - 6f;
+                    tickBot = y + h - 2f;
+                    thick   = 1.2f;
+                    alpha  *= 0.35f;
+                }
+                else if (i % 30 == 0)
+                {
+                    tickTop = cy - h * 0.18f;
+                    tickBot = y + h - 2f;
+                    thick   = 1.0f;
+                }
+                else
+                {
+                    tickTop = y + h - 8f;
+                    tickBot = y + h - 2f;
+                    thick   = 1.0f;
+                }
+
+                drawList.AddLine(new(screenX, tickTop), new(screenX, tickBot), ApplyAlpha(LineColor, alpha), thick);
             }
         }
 
         if (ShowCardinals)
         {
             foreach (var (deg, label) in Cardinals)
-                DrawHeadingLabel(drawList, deg, heading, label, cx, cy, x, y, w, h, TextColor);
+                DrawHeadingLabel(drawList, deg, heading, label, cx, x, y, w, h, TextColor);
         }
 
         if (ShowInterCardinals)
         {
             foreach (var (deg, label) in InterCardinals)
-                DrawHeadingLabel(drawList, deg, heading, label, cx, cy, x, y, w, h, ApplyAlpha(TextColor, 0.75f));
+                DrawHeadingLabel(drawList, deg, heading, label, cx, x, y, w, h, ApplyAlpha(TextColor, 0.85f));
         }
 
         if (ShowMinimapIcons)
@@ -140,7 +156,7 @@ internal sealed class HorizonNode : Node
             DrawWeather(drawList, x, y, h);
 
         if (ShowDistance)
-            DrawDistance(drawList, x, y, w);
+            DrawDistance(drawList, x, y, w, h);
 
         drawList.PopClipRect();
     }
@@ -160,12 +176,12 @@ internal sealed class HorizonNode : Node
     private float Project(float targetDeg, float headingDeg, float centerX, float width)
     {
         var delta = targetDeg - headingDeg;
-        while (delta > 180f) delta  -= 360f;
+        while (delta > 180f) delta   -= 360f;
         while (delta <= -180f) delta += 360f;
 
-        var view = MathF.Max(1f, AngleRangeDegrees);
-        var n    = delta / view;
-        var pow  = MathF.Max(0.15f, FishEyePower);
+        var view      = MathF.Max(1f, AngleRangeDegrees);
+        var n         = delta / view;
+        var pow       = MathF.Max(0.15f, FishEyePower);
         var distorted = MathF.Sign(n) * MathF.Pow(MathF.Abs(n), pow);
         var halfPow   = MathF.Max(0.0001f, MathF.Pow(0.5f, pow));
         var scale     = (width / 2f) / halfPow;
@@ -190,57 +206,85 @@ internal sealed class HorizonNode : Node
 
     private void DrawHeadingLabel(
         ImDrawListPtr dl, float deg, float heading, string label,
-        float cx, float cy, float x, float y, float w, float h, uint color
+        float cx, float x, float y, float w, float h, uint color
     )
     {
         var screenX = Project(deg, heading, cx, w);
         var alpha   = EdgeFade(screenX, x, w);
         if (alpha <= 0.01f) return;
         var size = ImGui.CalcTextSize(label);
-        dl.AddText(new(screenX - size.X * 0.5f, y + 3), ApplyAlpha(color, alpha), label);
-        _ = (cy, h);
+        var tx   = screenX - size.X * 0.5f;
+        var ty   = y + MathF.Max(1f, (h - size.Y) * 0.22f);
+        dl.AddText(new(tx + 1, ty + 1), ApplyAlpha(0xCC000000, alpha), label);
+        dl.AddText(new(tx, ty), ApplyAlpha(color, alpha), label);
     }
 
     private unsafe void DrawMinimapIcons(ImDrawListPtr dl, float heading, float cx, float cy, float x, float w, float h)
     {
         if (!_navi.TryReadMapIcons(UseAreaMap, out _, out var root)) return;
-        if (root == null || root->Component == null) return;
+        if (root == null) return;
+        WalkIcons((AtkResNode*)root, heading, cx, cy, x, w, h, dl);
+    }
 
-        var list  = root->Component->UldManager.NodeList;
-        var count = root->Component->UldManager.NodeListCount;
-        var origin = NaviMapReader.NaviMapCenter;
+    private unsafe void WalkIcons(AtkResNode* node, float heading, float cx, float cy, float x, float w, float h, ImDrawListPtr dl)
+    {
+        if (node == null) return;
 
-        for (var i = 4; i < count; i++)
+        if (node->IsVisible())
         {
-            var node = list[i];
-            if (node == null || !node->IsVisible()) continue;
-
-            var pos = new Vector2(node->X, -node->Y);
-            var dir = pos - new Vector2(origin.X, -origin.Y);
-            if (dir.LengthSquared() < 0.01f) continue;
-
-            var angle = MathF.Atan2(dir.X, dir.Y) * (180f / MathF.PI);
-            if (angle < 0) angle += 360f;
-
-            var screenX = Project(angle, heading, cx, w);
-            if (screenX < x - 16 || screenX > x + w + 16) continue;
-
-            uint iconId = ReadIconId(node);
-            if (iconId != 0 && _filtered.Contains(iconId)) continue;
-
-            var dist  = dir.Length();
-            var scale = MathF.Max(MinIconScale, IconScale * MathF.Max(0.35f, 1f - dist / 180f));
-            var size  = MathF.Max(10f, 24f * scale);
-
-            if (iconId != 0 && TryGetIcon(iconId, out var wrap) && wrap != null)
+            var iconId = ReadIconId(node);
+            if (iconId != 0 || node->Type == NodeType.Image)
             {
-                var half = size * 0.5f;
-                dl.AddImage(wrap.Handle, new(screenX - half, cy - half), new(screenX + half, cy + half));
+                var pos = new Vector2(node->X, -node->Y);
+                var dir = pos - new Vector2(NaviMapReader.NaviMapCenter.X, -NaviMapReader.NaviMapCenter.Y);
+                if (dir.LengthSquared() > 1f)
+                    DrawProjectedIcon(dl, heading, dir, iconId, cx, cy, x, w, h);
             }
-            else
+        }
+
+        if (node->Type is NodeType.Component or (NodeType)1001)
+        {
+            var comp = (AtkComponentNode*)node;
+            if (comp->Component != null)
             {
-                dl.AddCircleFilled(new(screenX, cy), size * 0.28f, 0xE0FFFFFF);
+                var list  = comp->Component->UldManager.NodeList;
+                var count = comp->Component->UldManager.NodeListCount;
+                for (var i = 0; i < count; i++)
+                    WalkIcons(list[i], heading, cx, cy, x, w, h, dl);
             }
+        }
+
+        if (node->ChildNode != null)
+            WalkIcons(node->ChildNode, heading, cx, cy, x, w, h, dl);
+        if (node->PrevSiblingNode != null)
+            WalkIcons(node->PrevSiblingNode, heading, cx, cy, x, w, h, dl);
+    }
+
+    private void DrawProjectedIcon(
+        ImDrawListPtr dl, float heading, Vector2 dir, uint iconId,
+        float cx, float cy, float x, float w, float h
+    )
+    {
+        if (iconId != 0 && _filtered.Contains(iconId)) return;
+
+        var angle = MathF.Atan2(dir.X, dir.Y) * (180f / MathF.PI);
+        if (angle < 0) angle += 360f;
+
+        var screenX = Project(angle, heading, cx, w);
+        if (screenX < x - 16 || screenX > x + w + 16) return;
+
+        var dist  = dir.Length();
+        var scale = MathF.Max(MinIconScale, IconScale * MathF.Max(0.4f, 1f - dist / 180f));
+        var size  = MathF.Max(12f, 22f * scale);
+
+        if (iconId != 0 && TryGetIcon(iconId, out var wrap) && wrap != null)
+        {
+            var half = size * 0.5f;
+            dl.AddImage(wrap.Handle, new(screenX - half, cy - half), new(screenX + half, cy + half));
+        }
+        else
+        {
+            dl.AddCircleFilled(new(screenX, cy), size * 0.28f, 0xE0FFFFFF);
         }
 
         _ = h;
@@ -269,9 +313,9 @@ internal sealed class HorizonNode : Node
             var screenX = Project(angle, heading, cx, w);
             if (screenX < x - 16 || screenX > x + w + 16) continue;
 
-            var scale = MathF.Max(MinIconScale, IconScale * MathF.Max(0.35f, 1f - dist / 220f));
-            var iw = MathF.Max(8f, (marker.IconWidth > 0 ? marker.IconWidth : 32) * scale);
-            var ih = MathF.Max(8f, (marker.IconHeight > 0 ? marker.IconHeight : 32) * scale);
+            var scale = MathF.Max(MinIconScale, IconScale * MathF.Max(0.4f, 1f - dist / 220f));
+            var iw    = MathF.Max(10f, (marker.IconWidth > 0 ? marker.IconWidth : 32) * scale);
+            var ih    = MathF.Max(10f, (marker.IconHeight > 0 ? marker.IconHeight : 32) * scale);
 
             if (marker.IconId != 0 && TryGetIcon(marker.IconId, out var wrap) && wrap != null)
             {
@@ -292,16 +336,14 @@ internal sealed class HorizonNode : Node
         var weather = _zones.CurrentZone.CurrentWeather;
         if (weather == null) return;
 
-        uint iconId = 0;
-        try { iconId = (uint)(weather.GetType().GetProperty("IconId")?.GetValue(weather) ?? 0); }
-        catch { }
-
+        var iconId = ReadUintMember(weather, "IconId", "Icon", "WeatherIconId", "Id");
         if (iconId == 0 || !TryGetIcon(iconId, out var wrap) || wrap == null) return;
-        var s = MathF.Min(h - 4, 22);
-        dl.AddImage(wrap.Handle, new(x + 4, y + (h - s) * 0.5f), new(x + 4 + s, y + (h + s) * 0.5f));
+
+        var s = MathF.Min(h - 2, 20);
+        dl.AddImage(wrap.Handle, new(x + 2, y + (h - s) * 0.5f), new(x + 2 + s, y + (h + s) * 0.5f));
     }
 
-    private unsafe void DrawDistance(ImDrawListPtr dl, float x, float y, float w)
+    private unsafe void DrawDistance(ImDrawListPtr dl, float x, float y, float w, float h)
     {
         var ts = TargetSystem.Instance();
         if (ts == null) return;
@@ -309,9 +351,47 @@ internal sealed class HorizonNode : Node
         if (target == null) return;
 
         var d    = Vector3.Distance(_player.Position, target->Position);
-        var text = $"{d:0} yalms";
+        var text = $"{d:0}";
         var size = ImGui.CalcTextSize(text);
-        dl.AddText(new(x + w - size.X - 6, y + 2), TextColor, text);
+        var tx   = x + w - size.X - 4;
+        var ty   = y + MathF.Max(1f, (h - size.Y) * 0.5f);
+        dl.AddText(new(tx + 1, ty + 1), 0xCC000000, text);
+        dl.AddText(new(tx, ty), TextColor, text);
+    }
+
+    private static uint ReadUintMember(object obj, params string[] names)
+    {
+        var t = obj.GetType();
+        foreach (var name in names)
+        {
+            var p = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            if (p != null)
+            {
+                try
+                {
+                    var v = p.GetValue(obj);
+                    if (v is uint u) return u;
+                    if (v is int i && i > 0) return (uint)i;
+                    if (v is ushort us) return us;
+                    if (v is short s && s > 0) return (uint)s;
+                }
+                catch { }
+            }
+
+            var f = t.GetField(name, BindingFlags.Public | BindingFlags.Instance);
+            if (f != null)
+            {
+                try
+                {
+                    var v = f.GetValue(obj);
+                    if (v is uint u) return u;
+                    if (v is int i && i > 0) return (uint)i;
+                }
+                catch { }
+            }
+        }
+
+        return 0;
     }
 
     private bool TryGetIcon(uint iconId, out IDalamudTextureWrap? wrap)
