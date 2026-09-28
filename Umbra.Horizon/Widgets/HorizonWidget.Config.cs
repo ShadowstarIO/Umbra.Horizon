@@ -37,7 +37,7 @@ public sealed partial class HorizonWidget
                 "AngleRangeDegrees",
                 "Visible angle (deg)",
                 "Heading span shown on the strip. Higher is wider / flatter.",
-                170,
+                225,
                 45,
                 360
             ),
@@ -45,7 +45,7 @@ public sealed partial class HorizonWidget
                 "FishEyePower",
                 "Fish-eye",
                 "1 = linear (flat). Below 1 packs the center. Above 1 packs the edges.",
-                1.0f,
+                0.75f,
                 0.5f,
                 1.8f
             ),
