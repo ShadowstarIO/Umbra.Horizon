@@ -6,6 +6,10 @@ using Umbra.Markers.System;
 
 namespace Umbra.Horizon.Services;
 
+/// <summary>
+/// Reads Umbra world markers. Registry is internal, so this uses the public
+/// WorldMarker type and resolves the registry through the service container.
+/// </summary>
 [Service]
 internal sealed class WorldMarkerBridge
 {
@@ -18,7 +22,7 @@ internal sealed class WorldMarkerBridge
         {
             var type = typeof(WorldMarker).Assembly.GetType("Umbra.Markers.System.WorldMarkerRegistry");
             if (type == null) return;
-            _registry   = Framework.Service(type);
+            _registry   = Framework.Service<object>(type);
             _getMarkers = type.GetMethod("GetMarkers", BindingFlags.Instance | BindingFlags.Public);
         }
         catch

@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Umbra.Common;
@@ -35,7 +36,7 @@ internal sealed class NaviMapReader(IGameGui gameGui)
         if (cam == null) return 0f;
         var active = cam->GetActiveCamera();
         if (active == null) return 0f;
-        return active->GetHRotation();
+        return active->DirH;
     }
 
     public unsafe bool TryReadMapIcons(bool useAreaMap, out AtkUnitBase* addon, out AtkComponentNode* iconsRoot)
