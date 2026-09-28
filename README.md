@@ -1,24 +1,22 @@
 # Umbra.Horizon
 
-Expanded heading strip for Umbra. Places map markers, cardinals, and optional weather/target distance on a wide, flattened 1D compass.
+One toolbar strip meant to replace both the standalone 1D compass and Umbra’s built-in Compass widget.
 
 Install from Umbra Settings → Plugins:
 
 - Owner: `ShadowstarIO`
 - Repository: `Umbra.Horizon`
 
-Then add **Horizon** to a toolbar.
+Add **Horizon** to a toolbar. Turn off the stock Compass widget and the standalone compass plugin if you want a single heading display.
 
-## Widget options
+## On the strip
 
-- Width and height of the strip
-- Field of view (higher = flatter, less fisheye)
-- Icon scale and minimum scale by distance
-- Cardinals / intercardinals
-- Weather icon
+- Cardinals, optional intercardinals, degree ticks, center line
+- Flattened projection (fish-eye at 1.0 = linear)
+- Minimap / area-map icons
+- Umbra world markers that have **Show on Compass** enabled
+- Current weather
 - Distance to target
-- Center marker
-- Hide in combat / only in combat
-- Filtered icon IDs (comma-separated)
+- Icon scale, ID filter, combat visibility
 
 Requires Umbra 2.1+ and Dalamud.
