@@ -1,6 +1,5 @@
 using System.Numerics;
 using Dalamud.Plugin.Services;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Umbra.Common;
@@ -51,7 +50,6 @@ internal sealed class NaviMapReader(IGameGui gameGui)
 
         addon = (AtkUnitBase*)ptr;
         if (addon->UldManager.LoadedState != AtkLoadState.Loaded) return false;
-        if (!addon->IsVisible) return false;
         if (addon->UldManager.NodeListCount <= index) return false;
 
         iconsRoot = (AtkComponentNode*)addon->UldManager.NodeList[index];

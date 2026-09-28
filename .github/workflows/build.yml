@@ -3,7 +3,6 @@ name: Publish
 on:
   push:
     branches: [main]
-    tags: ["*"]
   workflow_dispatch:
 
 permissions:
@@ -12,7 +11,7 @@ permissions:
 env:
   SOLUTION_NAME: Umbra.Horizon
   RELEASE_DIR: out/Release
-  RELEASE_TAG: "1.0.0"
+  RELEASE_TAG: "0.0.1"
 
 jobs:
   Build:
@@ -57,7 +56,8 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_TAG }}
-          body: Horizon toolbar widget for Umbra.
+          body: Pre-release Horizon widget for Umbra.
           files: ${{ env.RELEASE_DIR }}/${{ env.SOLUTION_NAME }}.zip
           make_latest: true
+          prerelease: false
           fail_on_unmatched_files: true
